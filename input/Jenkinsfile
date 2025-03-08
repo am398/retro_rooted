@@ -1,0 +1,419 @@
+pipeline {
+    agent any
+    parameters {
+        
+        booleanParam(defaultValue: false, description: 'Want to build the package from scratch?', name: 'fullBuildFlag')
+        
+        booleanParam(defaultValue: false, description: 'Want to apply a new to the build?', name: 'patchApplyFlag')
+        string(defaultValue: 'RDKv6.1.0', description: 'enter the RDK version date for which you want to build', name: 'RDK_VERSION')
+        
+        string(defaultValue: 'RDKv6.1_ER3_Base_packages', description: 'enter the RDK version date for which you want to build', name: 'PRIME_RELEASE_BASE_NAME')
+        string(defaultValue: 'Feb_10_2025', description: 'enter the RDK version date for which you want to build', name: 'PRIME_RELEASE_BASE_DATE')
+        string(defaultValue: 'rdkv6.1.0_b24.0.1_er3_20250113_PrimeMeta', description: 'enter the RDK version date for which you want to build', name: 'PRIME_PATCH_VERSION_NAME')
+        string(defaultValue: 'Feb_10_2025_ER3', description: 'enter the RDK version date for which you want to build', name: 'PRIME_PATCH_VERSION_DATE')
+        
+        
+        booleanParam(defaultValue: true, description: 'Want to trigger new APP Launcher JOB with META-IRDETO?', name: 'appJobFlag')
+        string(defaultValue: 'Nightly-Alcantara-APP-Launcher', description: 'Enter the App Launcher Job name', name: 'APP_LAUNCHER_JOB')
+        booleanParam(defaultValue: true, description: 'Want to trigger new IMW Custom JOB with META-IRDETO?', name: 'imwCustomJobFlag')
+        string(defaultValue: 'Nightly-Alcantara-RHEA-Prime-72178-RDKv6.1.0', description: 'Enter the IMW Custom Job name', name: 'IMW_CUSTOM_JOB')
+        booleanParam(defaultValue: true, description: 'Want to trigger new META-IRDETO JOB?', name: 'metaIrdetoJobFlag')
+        string(defaultValue: 'Nightly-META-IRDETO_RDKv6.1', description: 'Enter the IMW Custom Job name', name: 'META_IRDETO_JOB')
+        
+	    string(defaultValue: 'broadcom-rdk', description: 'Please enter PLATFORM_NAME', name: 'PLATFORM_NAME')
+        string(defaultValue: 'RHEA-Alcantara-Prime-RDK-Xlet', description: 'Please enter APP_NAME', name: 'APP_NAME')
+        string(defaultValue: '1.14_6.1', description: 'Please enter CORE_RDK_version', name: 'Core_Rdk_Version')
+        string(defaultValue: env.latest_RHEA_MW ?: 'default_value', description: 'Please enter IMW_BUILD_ID', name: 'IMW_BUILD_ID')
+        string(defaultValue: '121', description: 'Please enter APP_BUILD_NUMBER', name: 'APP_BUILD_NUMBER')
+        string(defaultValue: 'RHEA', description: 'Please enter CORE_NAME', name: 'CORE_NAME')
+        
+        string(defaultValue: 'BR_0000_APP_LAUNCHER_LNG_2.X_ALCANTARA', description: 'Please enter the lightning app branch tag', name: 'App_Branch_Tag')
+        choice(name: 'PROJECT_TYPE', choices: ['ALCANTARA'], description: 'Please Select One')
+        
+        string(defaultValue: '5.1.0', description: 'Please enter CCA Version', name: 'cca_version')
+        choice(name: 'cca_type', choices: ['release','debug'], description: 'Please Select CCA Type')
+	}
+   environment{ 
+    Buid_Dir = "/var/lib/jenkins/"
+    ARTIFACT_USERNAME = 'mrityunjay.singh'
+    Local_Dir = 'workspace/Nightly-RDKv6.1_72178_Prime'
+    OTT_merge_Dir = "/home/rdk_server/rdk_dev/prime_unpack_tool/"
+    tokenFile = 'token.txt'
+	
+   }
+   
+   stages {
+
+       
+      stage('Setting up RDK base package for Prime ') {
+            steps {
+                script {
+                    
+                    if(params.fullBuildFlag == true)
+                    {
+                        sh '''
+                    
+                        echo $Build_Dir
+                        
+                        cd $Build_Dir
+                        artifactory_token=\$(grep -oP '(?<=password:).*' "\${tokenFile}")
+                        rm -rf $Local_Dir
+                        mkdir $Local_Dir
+                        chmod 777 $Local_Dir
+                        cd $Local_Dir
+    
+                        curl -o ${PRIME_RELEASE_BASE_NAME}.tgz -u ${ARTIFACT_USERNAME}:${artifactory_token} https://emea.rt.irdeto.com/artifactory/cpmu-video-debian-dev-local/Delhi/RDK-V/Vendor/Prime/${RDK_VERSION}/Full_Packages/${PRIME_RELEASE_BASE_DATE}/${PRIME_RELEASE_BASE_NAME}.tgz
+    
+                        
+                        '''
+                    }
+                    
+                    else {
+                        echo "Skipping the Full Build!!"
+                    }
+                    
+                    
+                }
+            }
+       
+        }
+
+        stage('Uncompressing the Base RDK packages & Copying the RefSw to downloads folder') {
+            steps {
+                script {
+                    
+                    if(params.fullBuildFlag == true)
+                    {
+                        sh '''
+                        cd $Build_Dir
+                        cd $Local_Dir
+    
+                        tar xf ${PRIME_RELEASE_BASE_NAME}.tgz
+    
+                        work_dir=${PWD}/rdkv6.1.0_b24.0.1_er3_20250113_moca
+                        mkdir -p ${work_dir}
+						
+                        cd ${PRIME_RELEASE_BASE_NAME}
+						
+						tar xf rdkv6.1.0_b24.0.1_er3_20250113_moca.tgz -C ${work_dir}
+	                    tar xf rdkv6.1.0_b24.0.1_er3_20250113_3pip_pesi.tgz
+	                    tar xf rdkv6.1.0_b24.0.1_er3_20250113_widevine.tgz -C ${work_dir}
+	                    tar xf rdkv6.1.0_b24.0.1_er3_20250113_wlan.tgz -C ${work_dir}
+       
+                          
+                        echo "Uncompressing done now copying RefSw"
+    
+						cp refsw_release_unified_URSR_24.0.1_20240930.tgz ${work_dir}/downloads
+						touch ${work_dir}/downloads/refsw_release_unified_URSR_24.0.1_20240930.tgz.done
+						cp refsw_release_unified_URSR_24.0.1_20240930_3pips_pesi.tgz ${work_dir}/downloads
+						touch ${work_dir}/downloads/refsw_release_unified_URSR_24.0.1_20240930_3pips_pesi.tgz.done
+                        
+                        '''
+                    }
+                    
+                    else {
+                        echo "Skipping the Full Build!!"
+                    }
+                    
+                    
+                }
+            }
+       
+        }
+
+        stage('Now Applying the Prime Patch') {
+            steps {
+                script {
+                    
+                    if(params.patchApplyFlag == true)
+                    {
+                        sh '''
+                        cd $Build_Dir
+                        artifactory_token=\$(grep -oP '(?<=password:).*' "\${tokenFile}")
+                        cd $Local_Dir
+    
+                        work_dir=${PWD}/rdkv6.1.0_b24.0.1_er3_20250113_moca
+                        
+                        curl -o ${PRIME_PATCH_VERSION_NAME}.tgz -u ${ARTIFACT_USERNAME}:${artifactory_token} https://emea.rt.irdeto.com/artifactory/cpmu-video-debian-dev-local/Delhi/RDK-V/Vendor/Prime/${RDK_VERSION}/Patches_Prime/72178_Prime/${PRIME_PATCH_VERSION_DATE}/${PRIME_PATCH_VERSION_NAME}.tgz
+    
+                        tar xf ${PRIME_PATCH_VERSION_NAME}.tgz -C ${work_dir}
+                        
+                        '''
+                    }
+                    
+                    else {
+                        echo "Skipping the Patch Apply stage!!"
+                    }
+                    
+                    
+                }
+            }
+       
+        }
+        
+        stage('Source the build before meta-irdeto') {
+            steps {
+                script {
+                   
+                    sh '''
+                    cd $Build_Dir
+                    cd $Local_Dir
+
+                    work_dir=${PWD}/rdkv6.1.0_b24.0.1_er3_20250113_moca
+                    
+                    cd ${work_dir}
+
+                    unset RDK_KERNEL_VERSION
+                    unset RDK_ENABLE_BT_BLUEZ
+                    unset RDK_ENABLE_BT_FLUORIDE
+                    
+                    export PATH=~/bin:$PATH
+
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto"
+                    
+                    cd ${work_dir}
+                    
+                    cd build*
+                
+                    #grep -qxF 'INHERIT += "own-mirrors"' conf/local.conf || echo 'INHERIT += "own-mirrors"' >> conf/local.conf
+                    #grep -qxF 'BB_FETCH_PREMIRRORONLY = "1"' conf/local.conf || echo 'BB_FETCH_PREMIRRORONLY = "1"' >> conf/local.conf
+                    #grep -qxF 'SOURCE_MIRROR_URL = "file:///home/rdk_server/rdk_dev/platforms/prime/snapshots/BCM972180/16-10-2024/BCM972180_30092024prime_17102024/"' conf/local.conf || echo 'SOURCE_MIRROR_URL = "file:///home/rdk_server/rdk_dev/platforms/prime/snapshots/BCM972180/16-10-2024/BCM972180_30092024prime_17102024/"' >> conf/local.conf
+					
+					
+
+                    echo "NOW pwd"
+                    pwd
+                    
+                    
+                    '''
+                    
+                }
+            }
+       
+        }
+
+        stage('Integrating the pre-built meta-irdeto packages') {
+            steps {
+                script {
+                    
+                     
+                    if(params.metaIrdetoJobFlag == true)
+                    {
+                        echo "Now branching towards the META-IRDETO preparation"
+                        
+                        def currentTime = new Date().format('HH', TimeZone.getTimeZone('Asia/Kolkata')) as Integer
+                    
+                        echo "currentTime = ${currentTime}"
+                        
+                        // Set PARAM1 dynamically based on the time of day
+                        if (currentTime == 5) {
+                            env.astroBuildFlag = 'true'
+                            echo "custom job name env.IMW_CUSTOM_JOB = Nightly-Alcantara-RHEA-Prime-72178-RDKv6.1.0_SYSID_1AA"
+                            env.IMW_CUSTOM_JOB = 'Nightly-Alcantara-RHEA-Prime-72178-RDKv6.1.0_SYSID_1AA'
+                            
+                            echo "meta-irdeto job name env.META_IRDETO_JOB = Nightly-META-IRDETO_RDKv6.1_SYSID_1AA"
+                            env.META_IRDETO_JOB = 'Nightly-META-IRDETO_RDKv6.1_SYSID_1AA'
+                            
+                        } else {
+                            env.astroBuildFlag = 'false'
+                            echo "custom job name env.IMW_CUSTOM_JOB = Nightly-Alcantara-RHEA-Prime-72178-RDKv6.1.0"
+                            env.IMW_CUSTOM_JOB = 'Nightly-Alcantara-RHEA-Prime-72178-RDKv6.1.0'
+                            
+                            echo "meta-irdeto job name env.META_IRDETO_JOB = Nightly-META-IRDETO_RDKv6.1"
+                            env.META_IRDETO_JOB = 'Nightly-META-IRDETO_RDKv6.1'
+                        }
+                    
+                        def meta_irdeto_job = build job: env.META_IRDETO_JOB, 
+                            wait: true,
+                            parameters:[
+                                    string(name: 'appJobFlag', value: params.appJobFlag.toString()),
+                                    string(name: 'APP_LAUNCHER_JOB', value: params.APP_LAUNCHER_JOB),
+                                    string(name: 'imwCustomJobFlag', value: params.imwCustomJobFlag.toString()),
+                                    string(name: 'IMW_CUSTOM_JOB', value: env.IMW_CUSTOM_JOB),
+                                    string(name: 'RDK_VERSION', value: params.RDK_VERSION),
+                                    string(name: 'Core_Rdk_Version', value: params.Core_Rdk_Version),
+                                    string(name: 'PLATFORM_NAME', value: params.PLATFORM_NAME),
+                                    string(name: 'APP_NAME', value: params.APP_NAME),
+                                    string(name: 'IMW_BUILD_ID', value: params.IMW_BUILD_ID),
+                                    string(name: 'APP_BUILD_NUMBER', value: params.APP_BUILD_NUMBER),
+                                    string(name: 'CORE_NAME', value: params.CORE_NAME),
+                                    string(name: 'PROJECT_TYPE', value: params.PROJECT_TYPE),
+                                    string(name: 'App_Branch_Tag', value: params.App_Branch_Tag),
+                                    string(name: 'cca_version', value: params.cca_version),
+                                    string(name: 'cca_type', value: params.cca_type)
+                            ]
+                    }
+                    
+                    else {
+                        echo "Skipping the trigger of META-IRDETO!!"
+                    }
+                    
+                    
+                    
+                    sh '''
+                    cd $Build_Dir
+                    cd $Local_Dir
+
+                    work_dir=${PWD}/rdkv6.1.0_b24.0.1_er3_20250113_moca
+                    
+                    cd $work_dir
+                    
+                    export PATH=~/bin:$PATH
+                    
+                    export META_IRDETO_JOB
+                    
+                    if [ -d "$work_dir/meta-irdeto" ]; then
+                        echo "already existing meta-irdeto delteing it and copying it again"
+                        rm -rf meta-irdeto
+                        cp -rf /var/lib/jenkins/workspace/$META_IRDETO_JOB/rdk_platforms_integration/broadcom/meta-irdeto .
+                    else
+                        cp -rf /var/lib/jenkins/workspace/$META_IRDETO_JOB/rdk_platforms_integration/broadcom/meta-irdeto .
+                    fi
+
+                    echo "adding the meta-irdeto layer to BBLayers file"
+
+                    BBFile="../rdkv6.1.0_b24.0.1_er3_20250113_moca/build-gf72178-irdeto/conf/bblayers.conf"
+                    meta_irdeto_layer='BBLAYERS += "${RDKROOT}/meta-irdeto"'
+
+                    # Check if the line exists in the file
+                    if ! grep -qxF "$meta_irdeto_layer" "$BBFile"; then
+                        sed -i '$aBBLAYERS += "${RDKROOT}/meta-irdeto"' ../rdkv6.1.0_b24.0.1_er3_20250113_moca/build-gf72178-irdeto/conf/bblayers.conf
+                        echo "Line added to the file."
+                    else
+                        echo "Line already exists in the file."
+                    fi
+                    
+                    echo "Now bitbaking the Irdeto artifacts"
+                    
+                    echo "1. IRDETO-IMW"
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake -c cleansstate lib32-irdeto-imw"
+                    cd $work_dir
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake lib32-irdeto-imw"
+                    cd $work_dir
+                    
+                    #echo "2. IMW-THUNDER-SERVER"
+                    #bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake -c cleansstate lib32-imw-thunder-server"
+                    #cd $work_dir
+                    #bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake lib32-imw-thunder-server"
+                    #cd $work_dir
+                    
+                    echo "3. IMW-THUNDER-SERVICES"
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake -c cleansstate lib32-imw-thunder-services"
+                    cd $work_dir
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake lib32-imw-thunder-services"
+                    
+                    echo "4. IRDETO-APP"
+                    cd $work_dir
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake -c cleansstate lib32-irdeto-app"
+                    cd $work_dir
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake lib32-irdeto-app"
+                    
+                    
+                    '''
+                    
+                }
+            }
+       
+        }
+
+        stage('Source the build again after meta-irdeto & Launching the Bitbake command') {
+            steps {
+                script {
+                    sh '''
+                    cd $Build_Dir
+                    cd $Local_Dir
+                    work_dir=${PWD}/rdkv6.1.0_b24.0.1_er3_20250113_moca
+                    
+                    cd ${work_dir}
+                    unset RDK_KERNEL_VERSION
+                    unset RDK_ENABLE_BT_BLUEZ
+                    unset RDK_ENABLE_BT_FLUORIDE
+                    
+                    export PATH=~/bin:$PATH
+                    
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake -c cleansstate lib32-rdk-generic-mediaclient-image"
+                    
+                    
+                    bash -c "source ./meta-rdk-oem-prime-soc-broadcom/setup-environment-prime-board-rdkv gf72178-irdeto; bitbake lib32-rdk-generic-mediaclient-image"
+                    
+                    echo "NOW pwd"
+                    pwd
+                    
+                    
+                    '''
+                    
+                }
+            }
+       
+        }
+        
+         stage('Copying the Required Files to output folder') {
+            steps {
+                script {
+                    
+                    echo "meta-irdeto-job = ${env.META_IRDETO_JOB}"
+                    echo "meta-irdeto-job = ${env.astroBuildFlag}"
+                    
+                    sh '''
+                    cd $Build_Dir
+                    artifactory_token=\$(grep -oP '(?<=password:).*' "\${tokenFile}")
+                    cd $Local_Dir
+                    
+                    if [ -d "OUTPUT" ]; then
+                        rm -rf OUTPUT
+                        mkdir OUTPUT
+                    else
+                        mkdir OUTPUT
+                    fi
+            
+
+                    cp -f rdkv6.1.0_b24.0.1_er3_20250113_moca/build-gf72178-irdeto/tmp/deploy/images/gf72178-irdeto/lib32-rdk-generic-mediaclient-image-gf72178-irdeto.ext4 OUTPUT/
+                    cp -f rdkv6.1.0_b24.0.1_er3_20250113_moca/build-gf72178-irdeto/tmp/deploy/images/gf72178-irdeto/Image.gz-gf72178-irdeto.bin OUTPUT/
+
+                    cd OUTPUT
+                    
+                    echo "Now copiying the ext4 to unpack and add OTT apps binaries"
+                    
+                    cp -f lib32-rdk-generic-mediaclient-image-gf72178-irdeto.ext4 $OTT_merge_Dir
+                    
+                    cd $OTT_merge_Dir
+                    
+                    ./merge_OTT_binaries.sh
+                    
+                     cd $Build_Dir
+                     cd $Local_Dir
+                     
+                     cd OUTPUT
+                    
+                    cp -f $OTT_merge_Dir/runtime_usb_gen_tool/runtime.ovr .
+                    
+                    
+                    BUILD_TIMESTAMP=`date +"%d-%b-%Y_%H-%M"`
+                    
+                    echo "meta-irdeto job = $META_IRDETO_JOB"
+                    
+                    echo "astro build tag flag ${astroBuildFlag}"
+                    
+                    
+                    if [ "$astroBuildFlag" == "true" ]; then
+                        curl -X PUT -u ${ARTIFACT_USERNAME}:${artifactory_token} -T runtime.ovr https://emea.rt.irdeto.com/artifactory/cpmu-video-debian-dev-local/Delhi/RDK-V/Astro-Alcantara/Prime/Green-Field/BCM_72178_RDKv6.1/Nightly_release_astroLab/${BUILD_TIMESTAMP}/runtime.ovr
+                    else
+                        curl -X PUT -u ${ARTIFACT_USERNAME}:${artifactory_token} -T runtime.ovr https://emea.rt.irdeto.com/artifactory/cpmu-video-debian-dev-local/Delhi/RDK-V/Astro-Alcantara/Prime/Green-Field/BCM_72178_RDKv6.1/Nightly_release/${BUILD_TIMESTAMP}/runtime.ovr
+
+                    fi
+                    
+                    #curl -X PUT -u ${ARTIFACT_USERNAME}:${artifactory_token} -T lib32-rdk-generic-mediaclient-image-gf72178-irdeto.ext4 https://emea.rt.irdeto.com/artifactory/cpmu-video-debian-dev-local/Delhi/RDK-V/Astro-Alcantara/Prime/Green-Field/BCM_72178_RDKv6.1/Sprint_release/${App_Branch_Tag}/lib32-rdk-generic-mediaclient-image-gf72178-irdeto.ext4
+                    #curl -X PUT -u ${ARTIFACT_USERNAME}:${artifactory_token} -T Image.gz-gf72178-irdeto.bin https://emea.rt.irdeto.com/artifactory/cpmu-video-debian-dev-local/Delhi/RDK-V/Astro-Alcantara/Prime/Green-Field/BCM_72178_RDKv6.1/Sprint_release/${App_Branch_Tag}/Image.gz-gf72178-irdeto.bin
+
+                    echo "NOW pwd"
+                    pwd
+                    
+                    
+                    '''
+                    
+                }
+            }
+       
+        }
+    }
+}
